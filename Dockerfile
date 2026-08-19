@@ -44,14 +44,22 @@ RUN pip install --no-cache-dir --user -r requirements.txt
 
 COPY --chown=appuser:appuser app ./app
 
-# Warm both model caches at build time so the first request is not a download.
+# Warm the model caches at build time so the first request is not a download.
+# v3 adds microsoft/wavlm-base for the frame-level overlap detector
+# (app/audio/overlap_frames.py) — without this, a cold container's first
+# overlap decision would silently fall back to the cepstral detector while
+# ~380MB downloads.
 RUN python -c "\
 from faster_whisper import WhisperModel; \
 WhisperModel('small', device='cpu', compute_type='int8')" \
  && python -c "\
 from huggingface_hub import snapshot_download; \
 snapshot_download('audeering/wav2vec2-large-robust-12-ft-emotion-msp-dim', \
-                  allow_patterns=['*.json','*.safetensors'])"
+                  allow_patterns=['*.json','*.safetensors'])" \
+ && python -c "\
+from huggingface_hub import snapshot_download; \
+snapshot_download('microsoft/wavlm-base', \
+                  allow_patterns=['*.json','*.bin','*.safetensors'])"
 
 # v2 addition: PANNs CNN14, used by app/audio/noise_panns.py and required for
 # app/models/noise_type_panns.joblib (measured +0.14 macro-F1 over the

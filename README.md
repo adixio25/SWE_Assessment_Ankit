@@ -45,7 +45,7 @@ waveform; three are judgements about a person.
 | `background_noise_type` | Random forest over the noise spectrum | free | yes |
 | `background_noise_severity` | Affected share of the call × severity | free | yes |
 | `audio_quality` | Clipping, band edge, level, dropout, reverb | free | yes |
-| `speaker_overlap_present` | Cepstral pitch competition | free | yes |
+| `speaker_overlap_present` | **Frame-level WavLM head** (v3; cepstral pitch competition as fallback) | free | yes |
 | `long_silence_present` | Gap analysis between speech segments | free | yes |
 | `emotional_intensity` | **wav2vec2 arousal**, measured on the waveform | free | yes |
 | `emotional_tone` | Language model reading the transcript, reconciled with measured affect | metered | no |
@@ -259,7 +259,7 @@ not carried forward unverified:
 | `audio_quality` | 3/3 | 0.615-0.654 (MOS-ensemble tested, made it worse, rejected) | 0.64 (Harper Valley, weak MOS proxy) |
 | `long_silence_present` | 3/3 | 1.000 | **0.778** (AMI Corpus, 27 real meeting windows — perfect precision) |
 | `emotional_intensity` | 3/3 | not validated | not tested |
-| `speaker_overlap_present` | 2/3 | AUC 0.593 (150-clip `ovlp_` subset) | **AUC 0.590** (60 real Harper Valley calls) — see below |
+| `speaker_overlap_present` | 2/3 | AUC 0.593 (150-clip `ovlp_` subset); **v3 frame-level WavLM: AUC 0.843, acc 0.652 (600-clip grouped CV)** | AUC 0.590 (60 real Harper Valley calls, cepstral); **v3: AUC 0.627 / acc 0.567 on the same 60** — see below and `TECHNICAL_MEMO.md` "Iteration 3" |
 | `emotional_tone` | 2/3 (up from 0/3, see below) | not validated | **0.84** coarse polarity (Harper Valley, 21/25); MELD attempted, domain-mismatched, excluded — see `TECHNICAL_MEMO.md` |
 
 `emotional_tone` went from 0/3 to 2/3 in v2 via a narrow fix: emotion2vec+, a
@@ -328,9 +328,23 @@ re-measured precisely for that combination.
 
 ---
 
-## Known weaknesses (v2, current)
+## Known weaknesses
 
-**Speaker overlap is the weakest field — confirmed on real audio, not just
+**Speaker overlap — substantially improved in v3, still the weakest field.**
+The cepstral detector below was replaced as the default by a frame-level
+WavLM-base detector (`app/audio/overlap_frames.py`), trained on
+generator-recorded overlap spans plus two-speaker turn-taking hard negatives
+and telephony/reverb augmentation. Measured against the cepstral detector on
+identical clips: dev CV AUC 0.843 vs 0.596, Harper Valley 0.627 vs 0.548,
+AMI 2-speaker 0.732 vs 0.429. One disclosed regression: AMI *accuracy*
+(0.580 vs 0.680) — on that 84%-positive out-of-scope corpus the old detector
+"wins" by predicting overlap almost regardless of input (below-chance AUC,
+2 of 8 true negatives found). On the known calls the trade is call_001
+(now a false positive) for call_003 (previously an unfixable miss): still
+2/3, total still 22/24. Everything below this paragraph is the v2 record of
+the cepstral detector, kept because it is still the fallback path.
+
+**The v2 record: speaker overlap confirmed weak on real audio, not just
 synthetic.** The provided files are dual mono (channels correlate at 1.0000),
 so there is no per-speaker channel to difference; two DSP approaches were
 built, and the shipped one (cepstral pitch competition) scored AUC 0.593 on

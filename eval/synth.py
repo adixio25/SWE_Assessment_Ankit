@@ -337,6 +337,9 @@ class SynthSpec:
     noise_snr_db: float
     overlap_sec: float
     longest_silence_sec: float
+    # (start_sec, end_sec) of each mixed-in overlap event; empty for every group
+    # except ovlp_. Ground truth by construction for frame-level overlap training.
+    overlap_spans: list = None
 
 
 def _lay_out_speech(
@@ -403,15 +406,23 @@ def _inject_noise(
 
 def _add_overlap(
     track: np.ndarray, other: list[np.ndarray], seconds: float, rng: np.random.Generator
-) -> tuple[np.ndarray, float]:
-    """Mix in a second, pitch-shifted talker over active speech."""
+) -> tuple[np.ndarray, float, list[tuple[float, float]]]:
+    """Mix in a second, pitch-shifted talker over active speech.
+
+    Also returns the placed spans as (start_sec, end_sec) pairs. Recording where
+    each overlap event landed adds no RNG draws, so audio generated with a given
+    seed is byte-identical to what this function produced before spans were
+    recorded — the manifest just carries strictly more ground truth (needed for
+    frame-level overlap training, eval/train_overlap_frames.py).
+    """
     out = track.copy()
     active = np.flatnonzero(np.abs(track) > 0.02)
     if active.size == 0 or seconds <= 0:
-        return out, 0.0
+        return out, 0.0, []
 
     placed = 0.0
     attempts = 0
+    spans: list[tuple[float, float]] = []
     while placed < seconds and attempts < 40:
         attempts += 1
         utt = other[rng.integers(0, len(other))]
@@ -425,7 +436,8 @@ def _add_overlap(
             continue
         out[start:start + length] += shifted[:length] * 0.55
         placed += length / SR
-    return np.clip(out, -1.0, 1.0).astype(np.float32), placed
+        spans.append((start / SR, (start + length) / SR))
+    return np.clip(out, -1.0, 1.0).astype(np.float32), placed, spans
 
 
 def generate(
@@ -440,10 +452,14 @@ def generate(
     out_dir.mkdir(parents=True, exist_ok=True)
     specs: list[SynthSpec] = []
 
-    noise_kinds = list({
+    # A plain list, deliberately not a set: string-set iteration order is
+    # hash-randomized per process, and this list's order feeds the shared RNG —
+    # a set here makes every run of the generator produce different audio even
+    # with the same seed.
+    noise_kinds = [
         "sharp static", "TV", "office chatter", "music",
         "road noise", "wind", "keyboard typing", "mechanical hum",
-    })
+    ]
 
     def emit(audio: np.ndarray, spec: SynthSpec) -> None:
         sf.write(out_dir / spec.name, audio, SR, subtype="PCM_16")
@@ -547,7 +563,7 @@ def generate(
 
         want = rng.random() < 0.5
         target = float(rng.uniform(1.5, 6.0)) if want else 0.0
-        mixed, placed = _add_overlap(track, other.utterances, target, rng)
+        mixed, placed, spans = _add_overlap(track, other.utterances, target, rng)
         audio = apply_gain(mixed, -20.0)
 
         emit(audio, SynthSpec(
@@ -556,6 +572,7 @@ def generate(
             background_noise_severity="none", audio_quality="clear",
             speaker_overlap_present=placed >= 0.5, long_silence_present=False,
             noise_snr_db=99.0, overlap_sec=placed, longest_silence_sec=0.0,
+            overlap_spans=[[round(s, 3), round(e, 3)] for s, e in spans],
         ))
 
     # ---- group 4: long silence ----

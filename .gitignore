@@ -3,6 +3,10 @@ __pycache__/
 *.pyc
 .env
 data/devset/
+data/devset_ovlp2/
+data/devset_ovlp_aug/
+data/wavlm_frame_cache/
+data/external/
 data/*.json
 .DS_Store
 uploads/
@@ -14,6 +18,7 @@ _panns_cache/
 requirements/*.ogg
 requirements/labels.csv
 requirements/*.pdf
+drive_requirements/
 data/eval_batch.zip
 
 # Never commit exported Claude Code session transcripts — they can contain

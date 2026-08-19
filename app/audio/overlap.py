@@ -23,19 +23,24 @@ are reported here because the negative one is informative:
     here as a measurement correction, not a new regression — the original
     figure most likely mixed in the diluting clips.
 
-The second is what ships, and 0.59 is honestly weak. It is the least reliable
-field in the system and its confidence contribution is discounted accordingly.
-The frame-fraction threshold was re-fit against the same 150-clip subset —
-0.25 (F1 0.464), not the previous hand-set 0.27 (F1 0.368 on the same set,
-recomputed) — but this does not rescue every weak instance: one known call's
-overlap sits at the 10th percentile of the positive class's own competing-
-fraction distribution, i.e. acoustically weaker than 90% of clips that
-genuinely do overlap, and no threshold catches that without destroying
-precision elsewhere. `pyannote/segmentation-3.0` is purpose-built for this
-and would do considerably better; it is wired in as an optional backend
-because it is licence-gated and needs both a Hugging Face token and a
-one-time acceptance of that model's terms, which not every deployment will
-have completed.
+The second shipped through iteration 2, and 0.59 is honestly weak. It is the
+least reliable field in the system and its confidence contribution is
+discounted accordingly. The frame-fraction threshold was re-fit against the
+same 150-clip subset — 0.25 (F1 0.464), not the previous hand-set 0.27
+(F1 0.368 on the same set, recomputed) — but this does not rescue every weak
+instance: one known call's overlap sits at the 10th percentile of the
+positive class's own competing-fraction distribution, i.e. acoustically
+weaker than 90% of clips that genuinely do overlap, and no threshold catches
+that without destroying precision elsewhere.
+
+v3: the default backend is now the frame-level WavLM detector in
+`app/audio/overlap_frames.py` (dev CV AUC 0.843 vs 0.596; Harper Valley
+0.627 vs 0.548; AMI 0.732 vs 0.429 — see TECHNICAL_MEMO.md "Iteration 3").
+The cepstral detector below remains as the fallback when the trained
+artifact is absent or WavLM cannot load, and `OVERLAP_BACKEND=cepstral`
+forces it. `pyannote/segmentation-3.0` still takes priority when configured:
+it is purpose-built for this, but licence-gated behind a manual acceptance
+not every deployment will have completed.
 """
 
 from __future__ import annotations
@@ -175,6 +180,34 @@ def detect_overlap(fb: FrameBank, vad: VadResult, th: Thresholds) -> OverlapResu
                 "margin": 1.0,
             },
         )
+
+    # v3: frame-level WavLM head (see app/audio/overlap_frames.py). Default when
+    # its trained artifact is present; OVERLAP_BACKEND=cepstral forces the old
+    # detector. Decides on total detected overlap seconds — the same
+    # domain-independent rule as the pyannote backend — not a clip-level
+    # probability, which is what sank the previous WavLM attempt on
+    # base-rate-shifted domains (see result.md).
+    if os.environ.get("OVERLAP_BACKEND", "").lower() != "cepstral":
+        from app.audio import overlap_frames
+
+        frames_out = overlap_frames.detect(fb.samples, fb.sample_rate)
+        if frames_out is not None:
+            total_sec, events, top_prob = frames_out
+            margin = min(abs(total_sec - th.overlap_min_sec) / max(th.overlap_min_sec, 1e-6), 1.0)
+            return OverlapResult(
+                present=total_sec >= th.overlap_min_sec,
+                total_sec=total_sec,
+                event_count=events,
+                frame_scores=np.zeros(0, dtype=np.float32),
+                evidence={
+                    "backend": "wavlm-frames",
+                    "overlap_sec": round(total_sec, 2),
+                    "events": events,
+                    "top_frame_prob": round(top_prob, 3),
+                    "decision_threshold_sec": th.overlap_min_sec,
+                    "margin": round(margin, 3),
+                },
+            )
 
     scores = _cepstral_competition(fb.samples, fb.sample_rate)
     if scores.size < 20:

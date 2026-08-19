@@ -396,10 +396,14 @@ infrastructure instead of accuracy numbers this time.
 
 ## 9. Known limitations, stated plainly
 
-- **`speaker_overlap_present`** is the weakest field in the system: ~0.59 AUC, barely above
-  chance, confirmed identically across synthetic data, 25 real Harper Valley calls, and 27
-  real AMI meeting windows. The actual fix (pyannote) is written and blocked on one manual
-  licence acceptance, not a modeling gap.
+- **`speaker_overlap_present`** was the weakest field in the system through v2: ~0.59 AUC,
+  barely above chance, confirmed identically across synthetic data, 25 real Harper Valley
+  calls, and 27 real AMI meeting windows. **v3 replaced the default detector** with a
+  frame-level WavLM head deciding on total detected overlap seconds (dev CV AUC 0.843,
+  Harper Valley 0.627, AMI 0.732 — see `TECHNICAL_MEMO.md` "Iteration 3"); the cepstral
+  detector stays as the fallback, and pyannote still takes priority when its licence is
+  accepted. It remains the least reliable field — AMI accuracy at the fixed decision rule
+  is a disclosed trade-off — just no longer a coin flip.
 - **`emotional_tone`** depends on a metered LLM with a real daily free-tier quota; once
   exhausted, the system gracefully degrades to a lexicon-based local heuristic rather than
   failing, but that heuristic is measurably weaker and the dashboard discloses this happening

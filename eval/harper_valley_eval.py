@@ -47,6 +47,7 @@ import asyncio
 import json
 import random
 import warnings
+import os
 from pathlib import Path
 
 warnings.filterwarnings("ignore")
@@ -57,10 +58,10 @@ import soundfile as sf
 from app.pipeline import analyse_clip
 from app.schema import EmotionalTone
 
-REPO = Path(
-    "/private/tmp/claude-501/-Users-ankitspc-Work-SWE-Assessment/"
-    "6b153786-7b9c-4844-8f52-3aa501abdf6e/scratchpad/harper_valley_repo/data"
-)
+REPO = Path(os.environ.get(
+    "HARPER_VALLEY_DIR",
+    "data/external/harper_valley_repo/data",
+))
 WORKDIR = Path("/tmp/hv_mixed")
 
 TONE_POLARITY = {

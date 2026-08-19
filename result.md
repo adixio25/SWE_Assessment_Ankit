@@ -2,13 +2,18 @@
 
 Every field this system outputs, scored against every dataset it's been tested
 against, as of the current code (`gpt-5-mini` via Azure OpenAI as sole tone
-provider, `app/ser/mapping.py`'s `satisfied`-withdrawal fix applied,
-`app/audio/overlap.py` on the plain cepstral detector — pyannote first if
-configured, cepstral as the fallback. A WavLM-based second backend was
-researched, built, and validated with real evidence — see "Overlap
-detection: WavLM researched, not shipped" below — but the deployment
-decision was to keep the simpler cepstral-only detector rather than accept
-its real-domain trade-off, so it is not in the code path currently running).
+provider, `app/ser/mapping.py`'s `satisfied`-withdrawal fix applied.
+**Iteration 3 update:** `app/audio/overlap.py` now ships a frame-level WavLM
+detector — backend order pyannote (if licensed) → wavlm-frames → cepstral.
+The `speaker_overlap_present` numbers in the matrix below are the *cepstral*
+detector's historical record; the shipped wavlm-frames numbers, measured on
+the same datasets, are in TECHNICAL_MEMO.md's "Iteration 3" section: dev CV
+acc 0.652/AUC 0.843 vs cepstral 0.563/0.596, Harper Valley 0.567/0.627 vs
+0.533/0.548, AMI 0.580/0.732 vs 0.680/0.429 — AMI accuracy is the one
+disclosed regression, on a below-chance-AUC baseline riding an 84% base
+rate. Known calls stay 2/3, now catching call_003 and missing call_001.
+The earlier clip-level WavLM attempt described below remains accurate
+history of why the first attempt was not shipped).
 Numbers
 are pass/fail counts, not percentages, so sample size is always visible next
 to the result — a field's accuracy means something different at n=18 than

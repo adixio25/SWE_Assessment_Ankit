@@ -18,6 +18,7 @@ from __future__ import annotations
 import json
 import random
 import warnings
+import os
 from pathlib import Path
 
 warnings.filterwarnings("ignore")
@@ -82,10 +83,10 @@ def eval_synthetic_devset(model, devset: Path, min_overlap_sec: float = 0.35):
     return acc, auc
 
 
-REPO = Path(
-    "/private/tmp/claude-501/-Users-ankitspc-Work-SWE-Assessment/"
-    "6b153786-7b9c-4844-8f52-3aa501abdf6e/scratchpad/harper_valley_repo/data"
-)
+REPO = Path(os.environ.get(
+    "HARPER_VALLEY_DIR",
+    "data/external/harper_valley_repo/data",
+))
 
 
 def derive_hv_truth(transcript: list[dict], min_overlap_ms: float = 350) -> bool:
